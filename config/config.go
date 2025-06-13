@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 type ProxyProtocolConfig struct {
@@ -12,6 +13,7 @@ type ProxyProtocolConfig struct {
 }
 
 type Config struct {
+	Timeout       time.Duration       `json:"timeout"`
 	ListenAddr    string              `json:"listen_addr"`
 	Backends      map[string]string   `json:"backends"`
 	Default       string              `json:"default"`
