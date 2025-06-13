@@ -26,8 +26,10 @@ func NewGateway(cfg *config.Config) *Gateway {
 }
 
 func (g *Gateway) selectBackend(serverAddr string) string {
-	// TODO: Implement backend selection logic based on serverAddr
-	return ""
+	if backend, ok := g.Config.Backends[serverAddr]; ok {
+		return backend
+	}
+	return g.Config.Default
 }
 
 func tcpAddrFromIPPort(ipStr string, port uint16) (*net.TCPAddr, error) {
