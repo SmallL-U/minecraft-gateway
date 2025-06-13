@@ -16,20 +16,27 @@ import (
 var logger = logx.GetLogger()
 
 type Gateway struct {
-	Config      *config.Config
+	config      *config.Config
 	configMutex sync.RWMutex
 	listener    net.Listener
 }
 
-func NewGateway(cfg *config.Config) *Gateway {
-	return &Gateway{Config: cfg}
+func NewGateway(conf *config.Config) *Gateway {
+	return &Gateway{config: conf}
+}
+
+func (g *Gateway) loadConfig(conf *config.Config) {
+	g.configMutex.Lock()
+	defer g.configMutex.Unlock()
+	g.config = conf
+	logger.Infof("Config reloaded: %+v", g.config)
 }
 
 func (g *Gateway) selectBackend(serverAddr string) string {
-	if backend, ok := g.Config.Backends[serverAddr]; ok {
+	if backend, ok := g.config.Backends[serverAddr]; ok {
 		return backend
 	}
-	return g.Config.Default
+	return g.config.Default
 }
 
 func tcpAddrFromIPPort(ipStr string, port uint16) (*net.TCPAddr, error) {
@@ -95,7 +102,7 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	defer func() {
 		_ = clientConn.Close()
 	}()
-	conf := g.Config
+	conf := g.config
 	clientAddr := clientConn.RemoteAddr()
 
 	// parse proxy protocol if enabled
@@ -199,12 +206,12 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 
 func (g *Gateway) Start() error {
 	logger.Info("Starting gateway...")
-	listener, err := net.Listen("tcp", g.Config.ListenAddr)
+	listener, err := net.Listen("tcp", g.config.ListenAddr)
 	if err != nil {
 		return err
 	}
 	g.listener = listener
-	logger.Infof("Gateway listening on %s", g.Config.ListenAddr)
+	logger.Infof("Gateway listening on %s", g.config.ListenAddr)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

@@ -24,7 +24,7 @@ func main() {
 	configFile := "config.json"
 	// save default config if it does not exist
 	if fileNotExists(configFile) {
-		logger.Info("Config file not found, creating default config...")
+		logger.Info("config file not found, creating default config...")
 		defaultConfig := config.DefaultConfig()
 		if err := defaultConfig.Save(configFile); err != nil {
 			logger.Fatalf("Failed to save default config: %v", err)
