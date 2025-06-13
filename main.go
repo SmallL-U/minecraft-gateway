@@ -67,6 +67,13 @@ func main() {
 			case syscall.SIGHUP:
 				logger.Info("Received SIGHUP signal, reloading configuration...")
 				// TODO: reload configuration logic can be added here
+				newConf, err := config.LoadConfig(configFile)
+				if err != nil {
+					logger.Errorf("Failed to reload config: %v", err)
+					continue
+				}
+				gw.LoadConfig(newConf)
+				logger.Infof("Configuration reloaded successfully: %+v", newConf)
 			default:
 				logger.Warnf("Received unknown signal: %v", sig)
 			}

@@ -25,11 +25,10 @@ func NewGateway(conf *config.Config) *Gateway {
 	return &Gateway{config: conf}
 }
 
-func (g *Gateway) loadConfig(conf *config.Config) {
+func (g *Gateway) LoadConfig(conf *config.Config) {
 	g.configMutex.Lock()
 	defer g.configMutex.Unlock()
 	g.config = conf
-	logger.Infof("Config reloaded: %+v", g.config)
 }
 
 func (g *Gateway) selectBackend(serverAddr string) string {
