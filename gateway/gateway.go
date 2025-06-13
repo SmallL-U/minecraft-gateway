@@ -7,7 +7,19 @@ import (
 )
 
 type Gateway struct {
-	config      *config.Config
+	Config      *config.Config
 	configMutex sync.RWMutex
 	listener    net.Listener
+}
+
+func NewGateway(cfg *config.Config) *Gateway {
+	return &Gateway{Config: cfg}
+}
+
+func (g *Gateway) Start() error {
+	return nil
+}
+
+func (g *Gateway) Stop() error {
+	return nil
 }
