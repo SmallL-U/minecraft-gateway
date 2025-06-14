@@ -15,7 +15,6 @@ WORKDIR /srv
 
 COPY --from=builder /app .
 COPY --from=builder /src/config.json .
-COPY --from=builder /src/whitelist.txt .
 
 EXPOSE 25565
 
