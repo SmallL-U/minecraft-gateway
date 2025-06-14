@@ -190,7 +190,7 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 		defer func() {
 			_ = backendConn.Close()
 		}()
-		if _, err := io.Copy(backendConn, clientConn); err != nil {
+		if _, err := io.Copy(backendConn, reader); err != nil {
 			if isExpectedNetworkError(err) {
 				return
 			}
