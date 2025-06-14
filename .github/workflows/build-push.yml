@@ -2,7 +2,7 @@ name: Build and push
 on:
   push:
     branches:
-      - devops/workflows
+      - main
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
