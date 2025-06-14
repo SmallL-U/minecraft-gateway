@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-func SaveJSON(filename string, v interface{}) error {
-	file, err := os.Create(filename)
+func SaveJSON(filepath string, v interface{}) error {
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
@@ -23,7 +23,7 @@ func SaveJSON(filename string, v interface{}) error {
 }
 
 func ReadLines(filepath string) ([]string, error) {
-	file, err := os.Create(filepath)
+	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func ReadLines(filepath string) ([]string, error) {
 }
 
 func SaveLines(filepath string, lines []string) error {
-	file, err := os.Create(filepath)
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

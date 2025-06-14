@@ -28,7 +28,7 @@ func main() {
 	// save default config if it does not exist
 	if fileNotExists(configFile) {
 		logger.Info("config file not found, creating default config...")
-		defaultConfig := config.DefaultConfig()
+		defaultConfig := config.Default()
 		if err := util.SaveJSON(configFile, defaultConfig); err != nil {
 			logger.Fatalf("Failed to save default config: %v", err)
 		}
@@ -48,7 +48,7 @@ func main() {
 		if err := util.SaveLines(whitelistFile, defaultWhitelist.ToLines()); err != nil {
 			logger.Fatalf("Failed to save default whitelist: %v", err)
 		}
-		logger.Info("Default whitelist created successfully. Starting file watcher...")
+		logger.Info("Default whitelist created successfully.")
 	}
 	// load whitelist
 	lines, err := util.ReadLines(whitelistFile)

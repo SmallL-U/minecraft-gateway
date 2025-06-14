@@ -60,7 +60,7 @@ func LoadConfig(filename string) (*Config, error) {
 	return config, nil
 }
 
-func DefaultConfig() *Config {
+func Default() *Config {
 	return &Config{
 		ListenAddr: ":25565",
 		Backends: map[string]string{
@@ -73,20 +73,4 @@ func DefaultConfig() *Config {
 			ReceiveFromDownstream: false,
 		},
 	}
-}
-
-func (c *Config) Save(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating config file: %v", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(c); err != nil {
-		return fmt.Errorf("error encoding config to JSON: %v", err)
-	}
-	return nil
 }

@@ -64,6 +64,7 @@ func (w *Whitelist) ToLines() []string {
 	for _, n := range w.nets {
 		lines = append(lines, n.String())
 	}
+	println(lines)
 	return lines
 }
 
