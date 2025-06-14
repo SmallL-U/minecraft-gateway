@@ -7,6 +7,7 @@ import (
 	"minecraft-gateway/config"
 	"minecraft-gateway/logx"
 	"minecraft-gateway/protocol"
+	"minecraft-gateway/whitelist"
 	"net"
 	"strings"
 	"sync"
@@ -16,16 +17,24 @@ import (
 var logger = logx.GetLogger()
 
 type Gateway struct {
-	config      *config.Config
-	configMutex sync.RWMutex
-	listener    net.Listener
+	config         *config.Config
+	configMutex    sync.RWMutex
+	whitelist      *whitelist.Whitelist
+	whitelistMutex sync.RWMutex
+	listener       net.Listener
 }
 
-func NewGateway(conf *config.Config) *Gateway {
-	return &Gateway{config: conf}
+func NewGateway(conf *config.Config, allowlist *whitelist.Whitelist) *Gateway {
+	return &Gateway{config: conf, whitelist: allowlist}
 }
 
-func (g *Gateway) LoadConfig(conf *config.Config) {
+func (g *Gateway) UpdateWhitelist(allowlist *whitelist.Whitelist) {
+	g.whitelistMutex.Lock()
+	defer g.whitelistMutex.Unlock()
+	g.whitelist = allowlist
+}
+
+func (g *Gateway) UpdateConfig(conf *config.Config) {
 	g.configMutex.Lock()
 	defer g.configMutex.Unlock()
 	g.config = conf
@@ -222,6 +231,18 @@ func (g *Gateway) Start() error {
 				}
 			}
 			logger.Errorf("Failed to accept connection: %s", err)
+			continue
+		}
+		// whitelist
+		tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr)
+		if !ok {
+			logger.Warnf("Received connection from non-TCP address: %s", conn.RemoteAddr())
+			_ = conn.Close()
+			continue
+		}
+		if !g.whitelist.Allowed(tcpAddr.IP) {
+			logger.Debugf("Connection from %s is not allowed by whitelist", tcpAddr.IP)
+			_ = conn.Close()
 			continue
 		}
 		go g.handleConnection(conn)

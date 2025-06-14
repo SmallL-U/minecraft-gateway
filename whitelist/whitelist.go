@@ -17,6 +17,15 @@ func New(nets []*net.IPNet) *Whitelist {
 	}
 }
 
+func Default() *Whitelist {
+	return &Whitelist{
+		nets: []*net.IPNet{
+			{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+			{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
+		},
+	}
+}
+
 func ParseLines(lines []string) []*net.IPNet {
 	var nets []*net.IPNet
 	for _, raw := range lines {
@@ -45,6 +54,17 @@ func ParseLines(lines []string) []*net.IPNet {
 		}
 	}
 	return nets
+}
+
+func (w *Whitelist) ToLines() []string {
+	w.mutex.RLock()
+	defer w.mutex.RUnlock()
+
+	lines := make([]string, 0, len(w.nets))
+	for _, n := range w.nets {
+		lines = append(lines, n.String())
+	}
+	return lines
 }
 
 func (w *Whitelist) Update(nets []*net.IPNet) {
