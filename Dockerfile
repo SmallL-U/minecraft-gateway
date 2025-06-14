@@ -14,7 +14,7 @@ FROM alpine:latest
 WORKDIR /srv
 
 COPY --from=builder /app .
-COPY --from=builder /src/config.yaml .
+COPY --from=builder /src/config.json .
 
 EXPOSE 8080
 
