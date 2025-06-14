@@ -3,7 +3,6 @@ package protocol
 import (
 	"bufio"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 )
@@ -26,8 +25,7 @@ func BuildProxyProtocolHeader(protocol string, srcIP string, destIP string, srcP
 	}
 }
 
-func ParseProxyProtocol(conn net.Conn) (*ProxyProtocolHeader, error) {
-	reader := bufio.NewReader(conn)
+func ParseProxyProtocol(reader *bufio.Reader) (*ProxyProtocolHeader, error) {
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err

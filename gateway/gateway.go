@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -112,10 +113,11 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	}()
 	conf := g.config
 	clientAddr := clientConn.RemoteAddr()
+	reader := bufio.NewReader(clientConn)
 
 	// parse proxy protocol if enabled
 	if conf.ProxyProtocol.ReceiveFromDownstream {
-		header, err := protocol.ParseProxyProtocol(clientConn)
+		header, err := protocol.ParseProxyProtocol(reader)
 		if err != nil {
 			logger.Errorf("Failed to parse proxy protocol header from %s: %s", clientAddr, err)
 			return
@@ -130,7 +132,7 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	}
 
 	// parse handshake
-	handshake, data, err := protocol.ParseHandshake(clientConn)
+	handshake, data, err := protocol.ParseHandshake(reader)
 	if err != nil {
 		logger.Errorf("Failed to parse handshake from %s: %s", clientAddr, err)
 		return

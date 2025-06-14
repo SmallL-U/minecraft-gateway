@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net"
 )
 
 type VarInt int32
@@ -40,8 +39,7 @@ func readVarInt(r io.ByteReader) (int32, error) {
 	return result, nil
 }
 
-func ParseHandshake(conn net.Conn) (*HandshakePacket, []byte, error) {
-	reader := bufio.NewReader(conn)
+func ParseHandshake(reader *bufio.Reader) (*HandshakePacket, []byte, error) {
 	// read packet len
 	packetLen, err := readVarInt(reader)
 	if err != nil {
