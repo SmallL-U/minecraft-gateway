@@ -39,19 +39,36 @@ func readVarInt(r io.ByteReader) (int32, error) {
 	return result, nil
 }
 
+func encodeVarInt(v int32) []byte {
+	var buf []byte
+	for {
+		b := byte(v & 0x7F)
+		v >>= 7
+		if v != 0 {
+			b |= 0x80
+		}
+		buf = append(buf, b)
+		if v == 0 {
+			break
+		}
+	}
+	return buf
+}
+
 func ParseHandshake(reader *bufio.Reader) (*HandshakePacket, []byte, error) {
+	var data []byte
 	// read packet len
 	packetLen, err := readVarInt(reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read packet length: %w", err)
 	}
 	// read full packet
-	data := make([]byte, packetLen)
-	if _, err := io.ReadFull(reader, data); err != nil {
+	payload := make([]byte, packetLen)
+	if _, err := io.ReadFull(reader, payload); err != nil {
 		return nil, nil, fmt.Errorf("failed to read full packet: %w", err)
 	}
 	// prepare to parse handshake packet
-	buf := bytes.NewReader(data)
+	buf := bytes.NewReader(payload)
 	// packet ID
 	packetID, err := readVarInt(buf)
 	if err != nil {
@@ -90,5 +107,7 @@ func ParseHandshake(reader *bufio.Reader) (*HandshakePacket, []byte, error) {
 		ServerPort:      serverPort,
 		NextState:       VarInt(nextState),
 	}
+
+	data = append(encodeVarInt(packetLen), payload...)
 	return h, data, nil
 }
