@@ -7,15 +7,6 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 'stable'
-      - name: Build
-        run: go build -o build/app main.go
-      - name: Generate default config
-        run: go run main.go
       - name: Login to registry
         uses: docker/login-action@v3
         with:
