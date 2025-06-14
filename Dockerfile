@@ -16,6 +16,6 @@ WORKDIR /srv
 COPY --from=builder /app .
 COPY --from=builder /src/config.json .
 
-EXPOSE 8080
+EXPOSE 25565
 
 ENTRYPOINT ["./app"]
