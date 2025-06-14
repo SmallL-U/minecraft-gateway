@@ -176,11 +176,6 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 		}
 	}
 
-	// send handshake data to backend
-	if err := sendData(backendConn, data); err != nil {
-		logger.Errorf("Failed to send handshake data to backend %s: %s", backendAddr, err)
-		return
-	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	// forward client to backend
@@ -209,6 +204,12 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 			logger.Errorf("Error forwarding data from backend %s to client %s: %s", backendAddr, clientAddr, err)
 		}
 	}()
+
+	// resend handshake data to backend
+	if err := sendData(backendConn, data); err != nil {
+		logger.Errorf("Failed to send handshake data to backend %s: %s", backendAddr, err)
+		return
+	}
 
 	wg.Wait()
 	logger.Infof("Connection closed for %s", clientAddr)

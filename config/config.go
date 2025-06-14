@@ -62,6 +62,7 @@ func LoadConfig(filename string) (*Config, error) {
 
 func Default() *Config {
 	return &Config{
+		Timeout:    5,
 		ListenAddr: ":25565",
 		Backends: map[string]string{
 			"lobby.example.com":    "127.0.0.1:25578",
