@@ -66,7 +66,6 @@ func main() {
 				return
 			case syscall.SIGHUP:
 				logger.Info("Received SIGHUP signal, reloading configuration...")
-				// TODO: reload configuration logic can be added here
 				newConf, err := config.LoadConfig(configFile)
 				if err != nil {
 					logger.Errorf("Failed to reload config: %v", err)
