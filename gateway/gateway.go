@@ -148,7 +148,7 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 
 	// dial backend
 	logger.Infof("Routing connection from %s to backend %s", clientAddr, backendAddr)
-	backendConn, err := net.DialTimeout("tcp", backendAddr, conf.Timeout*time.Second)
+	backendConn, err := net.DialTimeout("tcp", backendAddr, conf.Timeout)
 	if err != nil {
 		logger.Errorf("Failed to connect to backend %s: %s", backendAddr, err)
 		return
