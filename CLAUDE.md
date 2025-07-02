@@ -25,6 +25,24 @@ The application follows a modular architecture:
 - **Whitelist**: CIDR-based IP filtering that can be reloaded without restart
 - **Protocol Parsers**: Handle Minecraft handshake parsing and HAProxy PROXY protocol headers
 
+### Concurrency Architecture
+
+The gateway uses a multi-goroutine architecture with proper synchronization:
+
+- **Main Thread**: Handles signal processing (SIGINT/SIGTERM/SIGHUP) and configuration reloading
+- **Accept Loop**: Single goroutine accepting incoming connections in `gateway.Start()`
+- **Connection Handlers**: One goroutine per client connection in `handleConnection()`
+- **Data Forwarding**: Two goroutines per connection (bidirectional data transfer)
+- **Thread Safety**: RWMutex protects config and whitelist during hot reloads
+
+### Connection Flow
+
+1. Client connects → whitelist check → handshake parsing
+2. Backend selection based on server address from handshake
+3. Backend connection establishment
+4. Optional PROXY protocol header injection
+5. Bidirectional data forwarding with proper connection cleanup
+
 ## Development Commands
 
 ### Building
@@ -67,6 +85,13 @@ kill -HUP <pid>
 - **Minecraft Protocol**: Parses handshake packets to extract server address for routing
 - **HAProxy PROXY Protocol v1**: Preserves original client IP when behind load balancers
 - **IPv4/IPv6**: Full support for both IP versions
+
+## Security Considerations
+
+- **VarInt Validation**: Address length limited to 65535 bytes to prevent memory exhaustion attacks
+- **Type Safety**: Safe type assertions with proper error handling to prevent panics
+- **Resource Management**: Proper connection cleanup and goroutine lifecycle management
+- **Whitelist Enforcement**: IP-based access control with CIDR support
 
 ## Signal Handling
 
