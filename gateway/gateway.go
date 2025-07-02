@@ -204,7 +204,7 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 			_ = clientConn.Close()
 		}()
 		if _, err := io.Copy(clientConn, backendConn); err != nil {
-			if !isExpectedNetworkError(err) {
+			if isExpectedNetworkError(err) {
 				return
 			}
 			logger.Errorf("Error forwarding data from backend %s to client %s: %s", backendAddr, clientAddr, err)
