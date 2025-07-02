@@ -84,6 +84,11 @@ func ParseHandshake(reader *bufio.Reader) (*HandshakePacket, []byte, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read address length: %w", err)
 	}
+	// validate address length to prevent memory exhaustion
+	const maxAddressLength = 65535 // reasonable limit for domain names
+	if addrLen < 0 || addrLen > maxAddressLength {
+		return nil, nil, fmt.Errorf("invalid address length: %d (must be 0-%d)", addrLen, maxAddressLength)
+	}
 	addrBytes := make([]byte, addrLen)
 	if _, err := io.ReadFull(buf, addrBytes); err != nil {
 		return nil, nil, fmt.Errorf("failed to read address: %w", err)

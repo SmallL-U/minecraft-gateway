@@ -111,7 +111,9 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	defer func() {
 		_ = clientConn.Close()
 	}()
+	g.configMutex.RLock()
 	conf := g.config
+	g.configMutex.RUnlock()
 	clientAddr := clientConn.RemoteAddr()
 	reader := bufio.NewReader(clientConn)
 
@@ -158,12 +160,29 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	}()
 	// send proxy protocol header if enabled
 	if conf.ProxyProtocol.SendToUpstream {
+		// safely extract client address
+		clientTCPAddr, ok := clientAddr.(*net.TCPAddr)
+		if !ok {
+			logger.Errorf("Expected TCP address for client, got %T", clientAddr)
+			return
+		}
+		// safely extract backend address
+		backendTCPAddr, ok := backendConn.RemoteAddr().(*net.TCPAddr)
+		if !ok {
+			logger.Errorf("Expected TCP address for backend, got %T", backendConn.RemoteAddr())
+			return
+		}
+		// determine protocol type based on IP version
+		protocolType := "TCP4"
+		if clientTCPAddr.IP.To4() == nil {
+			protocolType = "TCP6"
+		}
 		header := protocol.BuildProxyProtocolHeader(
-			"TCP4",
-			clientAddr.(*net.TCPAddr).IP.String(),
-			backendConn.RemoteAddr().(*net.TCPAddr).IP.String(),
-			uint16(clientAddr.(*net.TCPAddr).Port),
-			uint16(backendConn.RemoteAddr().(*net.TCPAddr).Port),
+			protocolType,
+			clientTCPAddr.IP.String(),
+			backendTCPAddr.IP.String(),
+			uint16(clientTCPAddr.Port),
+			uint16(backendTCPAddr.Port),
 		)
 		bytes, err := header.ToBytes()
 		if err != nil {
@@ -187,27 +206,29 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	// forward client to backend
 	go func() {
 		defer wg.Done()
-		defer func() {
-			_ = backendConn.Close()
-		}()
 		if _, err := io.Copy(backendConn, reader); err != nil {
 			if isExpectedNetworkError(err) {
 				return
 			}
 			logger.Errorf("Error forwarding data from client %s to backend %s: %s", clientAddr, backendAddr, err)
 		}
+		// close write side to signal end of data
+		if closer, ok := backendConn.(interface{ CloseWrite() error }); ok {
+			_ = closer.CloseWrite()
+		}
 	}()
 	// forward backend to client
 	go func() {
 		defer wg.Done()
-		defer func() {
-			_ = clientConn.Close()
-		}()
 		if _, err := io.Copy(clientConn, backendConn); err != nil {
 			if isExpectedNetworkError(err) {
 				return
 			}
 			logger.Errorf("Error forwarding data from backend %s to client %s: %s", backendAddr, clientAddr, err)
+		}
+		// close write side to signal end of data
+		if closer, ok := clientConn.(interface{ CloseWrite() error }); ok {
+			_ = closer.CloseWrite()
 		}
 	}()
 
@@ -243,7 +264,10 @@ func (g *Gateway) Start() error {
 			_ = conn.Close()
 			continue
 		}
-		if !g.whitelist.Allowed(tcpAddr.IP) {
+		g.whitelistMutex.RLock()
+		allowed := g.whitelist.Allowed(tcpAddr.IP)
+		g.whitelistMutex.RUnlock()
+		if !allowed {
 			logger.Debugf("Connection from %s is not allowed by whitelist", tcpAddr.IP)
 			_ = conn.Close()
 			continue
