@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"minecraft-gateway/config"
-	"minecraft-gateway/logx"
-	"minecraft-gateway/protocol"
-	"minecraft-gateway/whitelist"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"minecraft-gateway/internal/config"
+	"minecraft-gateway/internal/logx"
+	"minecraft-gateway/internal/protocol"
+	"minecraft-gateway/internal/whitelist"
 )
 
 var logger = logx.GetLogger()

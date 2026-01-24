@@ -4,10 +4,10 @@ WORKDIR /src
 COPY . .
 
 # Generate default config
-RUN go run main.go
+RUN go run ./cmd/minecraft-gateway
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app ./cmd/minecraft-gateway
 
 FROM alpine:latest
 

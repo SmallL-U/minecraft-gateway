@@ -8,15 +8,15 @@ This is a Minecraft gateway/proxy server written in Go that routes connections b
 
 ## Architecture
 
-The application follows a modular architecture:
+The application follows a standard Go project layout:
 
-- **main.go**: Entry point with configuration loading, signal handling, and graceful shutdown
-- **gateway/**: Core proxy logic with connection handling and data forwarding  
-- **config/**: Configuration management with JSON loading and validation
-- **protocol/**: Minecraft and PROXY protocol parsers
-- **whitelist/**: IP-based access control using CIDR ranges
-- **logx/**: Structured logging wrapper around zap
-- **util/**: File I/O utilities for JSON and line-based files
+- **cmd/minecraft-gateway/**: Entry point with configuration loading, signal handling, and graceful shutdown
+- **internal/gateway/**: Core proxy logic with connection handling and data forwarding
+- **internal/config/**: Configuration management with JSON loading and validation
+- **internal/protocol/**: Minecraft and PROXY protocol parsers
+- **internal/whitelist/**: IP-based access control using CIDR ranges
+- **internal/logx/**: Structured logging wrapper around zap
+- **internal/util/**: File I/O utilities for JSON and line-based files
 
 ### Key Components
 
@@ -47,16 +47,16 @@ The gateway uses a multi-goroutine architecture with proper synchronization:
 
 ### Building
 ```bash
-go build -o minecraft-gateway main.go
+go build -o minecraft-gateway ./cmd/minecraft-gateway
 ```
 
 ### Running
 ```bash
 # Generate default config (exits after creation)
-go run main.go
+go run ./cmd/minecraft-gateway
 
 # Run with existing config
-go run main.go
+go run ./cmd/minecraft-gateway
 ```
 
 ### Docker

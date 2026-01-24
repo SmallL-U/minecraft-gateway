@@ -1,14 +1,15 @@
 package main
 
 import (
-	"minecraft-gateway/config"
-	"minecraft-gateway/gateway"
-	"minecraft-gateway/logx"
-	"minecraft-gateway/util"
-	"minecraft-gateway/whitelist"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"minecraft-gateway/internal/config"
+	"minecraft-gateway/internal/gateway"
+	"minecraft-gateway/internal/logx"
+	"minecraft-gateway/internal/util"
+	"minecraft-gateway/internal/whitelist"
 )
 
 var gw *gateway.Gateway
