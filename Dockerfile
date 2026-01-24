@@ -1,5 +1,7 @@
 FROM golang:1.24-alpine AS builder
 
+RUN apk add --no-cache make
+
 WORKDIR /src
 COPY . .
 
@@ -7,14 +9,14 @@ COPY . .
 RUN go run ./cmd/minecraft-gateway
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app ./cmd/minecraft-gateway
+RUN CGO_ENABLED=0 GOOS=linux make build
 
 FROM alpine:latest
 
 WORKDIR /srv
 
-COPY --from=builder /app .
-COPY --from=builder /src/config.json .
+COPY --from=builder /src/bin/minecraft-gateway ./app
+COPY --from=builder /src/config.yml .
 
 EXPOSE 25565
 

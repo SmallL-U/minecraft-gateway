@@ -12,11 +12,12 @@ The application follows a standard Go project layout:
 
 - **cmd/minecraft-gateway/**: Entry point with configuration loading, signal handling, and graceful shutdown
 - **internal/gateway/**: Core proxy logic with connection handling and data forwarding
-- **internal/config/**: Configuration management with JSON loading and validation
+- **internal/config/**: Configuration management with YAML loading and validation
 - **internal/protocol/**: Minecraft and PROXY protocol parsers
 - **internal/whitelist/**: IP-based access control using CIDR ranges
 - **internal/logx/**: Structured logging wrapper around zap
-- **internal/util/**: File I/O utilities for JSON and line-based files
+- **internal/util/**: File I/O utilities for YAML and line-based files
+- **internal/pidfile/**: PID file management for single instance enforcement and signal handling
 
 ### Key Components
 
@@ -70,14 +71,22 @@ docker run -p 25565:25565 minecraft-gateway
 
 ### Configuration Files
 
-- **config.json**: Main configuration with listen address, backend mappings, timeouts, and PROXY protocol settings
+- **config.yml**: Main configuration with listen address, backend mappings, timeouts, and PROXY protocol settings
 - **whitelist.txt**: CIDR ranges for IP-based access control, one per line
+- **minecraft-gateway.pid**: PID file for single instance enforcement
 
 ### Hot Reload
 
-Send SIGHUP to reload configuration and whitelist without restart:
+Reload configuration and whitelist without restart:
 ```bash
-kill -HUP <pid>
+./minecraft-gateway reload
+```
+
+### Stop Server
+
+Stop the running instance gracefully:
+```bash
+./minecraft-gateway stop
 ```
 
 ## Protocol Support

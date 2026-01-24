@@ -3,7 +3,6 @@ package gateway
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -47,21 +46,6 @@ func (g *Gateway) selectBackend(serverAddr string) string {
 		return backend
 	}
 	return g.config.Default
-}
-
-func tcpAddrFromIPPort(ipStr string, port uint16) (*net.TCPAddr, error) {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return nil, fmt.Errorf("invalid IP: %s", ipStr)
-	}
-	// 对 IPv6，要用方括号包裹
-	var addrStr string
-	if ip.To4() == nil { // 不是IPv4就是IPv6
-		addrStr = fmt.Sprintf("[%s]:%d", ipStr, port)
-	} else {
-		addrStr = fmt.Sprintf("%s:%d", ipStr, port)
-	}
-	return net.ResolveTCPAddr("tcp", addrStr)
 }
 
 func sendData(dst net.Conn, data []byte) error {
@@ -125,13 +109,8 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 			logger.Errorf("Failed to parse proxy protocol header from %s: %s", clientAddr, err)
 			return
 		}
-		tcpAddr, err := tcpAddrFromIPPort(header.SrcIP, header.SrcPort)
-		if err != nil {
-			logger.Errorf("Failed to resolve TCP address from proxy protocol header: %s", err)
-			return
-		}
-		clientAddr = tcpAddr
-		logger.Debugf("Received proxy protocol header from %s: %+v", clientAddr, header)
+		clientAddr = header.SrcAddr
+		logger.Debugf("Received proxy protocol header from %s", clientAddr)
 	}
 
 	// parse handshake
@@ -161,36 +140,12 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	}()
 	// send proxy protocol header if enabled
 	if conf.ProxyProtocol.SendToUpstream {
-		// safely extract client address
-		clientTCPAddr, ok := clientAddr.(*net.TCPAddr)
-		if !ok {
-			logger.Errorf("Expected TCP address for client, got %T", clientAddr)
-			return
-		}
-		// safely extract backend address
-		backendTCPAddr, ok := backendConn.RemoteAddr().(*net.TCPAddr)
-		if !ok {
-			logger.Errorf("Expected TCP address for backend, got %T", backendConn.RemoteAddr())
-			return
-		}
-		// determine protocol type based on IP version
-		protocolType := "TCP4"
-		if clientTCPAddr.IP.To4() == nil {
-			protocolType = "TCP6"
-		}
-		header := protocol.BuildProxyProtocolHeader(
-			protocolType,
-			clientTCPAddr.IP.String(),
-			backendTCPAddr.IP.String(),
-			uint16(clientTCPAddr.Port),
-			uint16(backendTCPAddr.Port),
-		)
-		bytes, err := header.ToBytes()
+		headerBytes, err := protocol.BuildProxyProtocolV1Header(clientAddr, backendConn.RemoteAddr())
 		if err != nil {
-			logger.Errorf("Failed to serialize header: %s", err)
+			logger.Errorf("Failed to build proxy protocol header: %s", err)
 			return
 		}
-		if err := sendData(backendConn, bytes); err != nil {
+		if err := sendData(backendConn, headerBytes); err != nil {
 			logger.Errorf("Failed to send proxy protocol header to backend %s: %s", backendAddr, err)
 			return
 		}

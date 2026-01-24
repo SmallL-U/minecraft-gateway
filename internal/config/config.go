@@ -1,23 +1,24 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/goccy/go-yaml"
 )
 
 type ProxyProtocolConfig struct {
-	SendToUpstream        bool `json:"send_to_upstream"`
-	ReceiveFromDownstream bool `json:"receive_from_downstream"`
+	SendToUpstream        bool `yaml:"send_to_upstream"`
+	ReceiveFromDownstream bool `yaml:"receive_from_downstream"`
 }
 
 type Config struct {
-	Timeout       time.Duration       `json:"timeout"`
-	ListenAddr    string              `json:"listen_addr"`
-	Backends      map[string]string   `json:"backends"`
-	Default       string              `json:"default"`
-	ProxyProtocol ProxyProtocolConfig `json:"proxy_protocol"`
+	Timeout       time.Duration       `yaml:"timeout"`
+	ListenAddr    string              `yaml:"listen_addr"`
+	Backends      map[string]string   `yaml:"backends"`
+	Default       string              `yaml:"default"`
+	ProxyProtocol ProxyProtocolConfig `yaml:"proxy_protocol"`
 }
 
 func validateConfig(config *Config) error {
@@ -39,18 +40,14 @@ func validateConfig(config *Config) error {
 }
 
 func LoadConfig(filename string) (*Config, error) {
-	file, err := os.Open(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("error opening config file: %v", err)
+		return nil, fmt.Errorf("error reading config file: %v", err)
 	}
-	defer func() {
-		_ = file.Close()
-	}()
 
 	config := &Config{}
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(config); err != nil {
-		return nil, fmt.Errorf("error decoding config from JSON: %v", err)
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("error decoding config from YAML: %v", err)
 	}
 
 	if err := validateConfig(config); err != nil {

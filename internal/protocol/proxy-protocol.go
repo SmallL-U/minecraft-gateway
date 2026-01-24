@@ -3,66 +3,53 @@ package protocol
 import (
 	"bufio"
 	"fmt"
-	"strconv"
-	"strings"
+	"net"
+
+	proxyproto "github.com/pires/go-proxyproto"
 )
 
+// ProxyProtocolHeader represents parsed proxy protocol header info.
 type ProxyProtocolHeader struct {
-	Protocol string
-	SrcIP    string
-	DestIP   string
-	SrcPort  uint16
-	DestPort uint16
+	SrcAddr net.Addr
+	DstAddr net.Addr
 }
 
-func BuildProxyProtocolHeader(protocol string, srcIP string, destIP string, srcPort uint16, destPort uint16) *ProxyProtocolHeader {
-	return &ProxyProtocolHeader{
-		Protocol: protocol,
-		SrcIP:    srcIP,
-		DestIP:   destIP,
-		SrcPort:  srcPort,
-		DestPort: destPort,
-	}
-}
-
+// ParseProxyProtocol parses PROXY protocol header (supports both v1 and v2).
 func ParseProxyProtocol(reader *bufio.Reader) (*ProxyProtocolHeader, error) {
-	line, err := reader.ReadString('\n')
+	header, err := proxyproto.Read(reader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse proxy protocol: %w", err)
 	}
-	line = strings.TrimRight(line, "\r\n")
-	parts := strings.Split(line, " ")
-	if len(parts) < 2 || parts[0] != "PROXY" {
-		return nil, fmt.Errorf("invalid PROXY header: %s", line)
-	}
-	proto := parts[1]
-	if len(parts) != 6 {
-		return nil, fmt.Errorf("invalid PROXY header format: %s", line)
-	}
-	srcIP := parts[2]
-	dstIP := parts[3]
-	srcPort64, err := strconv.ParseUint(parts[4], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("invalid source port: %s", parts[4])
-	}
-	destPort64, err := strconv.ParseUint(parts[5], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("invalid destination port: %s", parts[5])
-	}
+
 	return &ProxyProtocolHeader{
-		Protocol: proto,
-		SrcIP:    srcIP,
-		DestIP:   dstIP,
-		SrcPort:  uint16(srcPort64),
-		DestPort: uint16(destPort64),
+		SrcAddr: header.SourceAddr,
+		DstAddr: header.DestinationAddr,
 	}, nil
 }
 
-func (h *ProxyProtocolHeader) ToBytes() ([]byte, error) {
-	var builder strings.Builder
-	_, err := fmt.Fprintf(&builder, "PROXY %s %s %s %d %d\r\n", h.Protocol, h.SrcIP, h.DestIP, h.SrcPort, h.DestPort)
-	if err != nil {
-		return nil, err
+// BuildProxyProtocolV1Header builds a PROXY protocol v1 header for sending to upstream.
+func BuildProxyProtocolV1Header(srcAddr, dstAddr net.Addr) ([]byte, error) {
+	srcTCP, ok := srcAddr.(*net.TCPAddr)
+	if !ok {
+		return nil, fmt.Errorf("source address is not TCP: %T", srcAddr)
 	}
-	return []byte(builder.String()), nil
+	dstTCP, ok := dstAddr.(*net.TCPAddr)
+	if !ok {
+		return nil, fmt.Errorf("destination address is not TCP: %T", dstAddr)
+	}
+
+	transportProto := proxyproto.TCPv4
+	if srcTCP.IP.To4() == nil {
+		transportProto = proxyproto.TCPv6
+	}
+
+	header := &proxyproto.Header{
+		Version:           1,
+		Command:           proxyproto.PROXY,
+		TransportProtocol: transportProto,
+		SourceAddr:        srcTCP,
+		DestinationAddr:   dstTCP,
+	}
+
+	return header.Format()
 }

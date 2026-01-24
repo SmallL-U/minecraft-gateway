@@ -2,24 +2,17 @@ package util
 
 import (
 	"bufio"
-	"encoding/json"
 	"os"
+
+	"github.com/goccy/go-yaml"
 )
 
-func SaveJSON(filepath string, v interface{}) error {
-	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
+func SaveYAML(filepath string, v interface{}) error {
+	data, err := yaml.MarshalWithOptions(v, yaml.IndentSequence(true))
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = file.Close()
-	}()
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(v); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filepath, data, 0644)
 }
 
 func ReadLines(filepath string) ([]string, error) {
