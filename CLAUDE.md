@@ -15,7 +15,7 @@ The application follows a standard Go project layout:
 - **internal/config/**: Configuration management with YAML loading, validation, and whitelist parsing
 - **internal/protocol/**: Minecraft and PROXY protocol parsers (supports v1 and v2)
 - **internal/logx/**: Structured logging wrapper around zap
-- **internal/pidfile/**: PID file management for single instance enforcement and signal handling
+- **internal/proc/**: Cross-platform process management (Unix: PID file, Windows: Named Events)
 
 ### Key Components
 
