@@ -5,9 +5,6 @@ RUN apk add --no-cache make
 WORKDIR /src
 COPY . .
 
-# Generate default config
-RUN go run ./cmd/minecraft-gateway
-
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux make build
 

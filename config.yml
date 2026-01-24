@@ -1,0 +1,28 @@
+timeout: 5s
+listen_addr: ":25565"
+default: "127.0.0.1:25577"
+
+# Global whitelist (allow all by default)
+whitelist:
+  - 0.0.0.0/0
+  - "::/0"
+
+# Global proxy protocol settings
+proxy_protocol:
+  send_to_upstream: false
+  receive_from_downstream: false
+
+# Server list
+servers:
+  - name: lobby.example.com
+    address: "127.0.0.1:25578"
+    # Optional: override global whitelist for this server
+    # whitelist:
+    #   - 192.168.1.0/24
+    # Optional: override global proxy protocol for this server
+    # proxy_protocol:
+    #   send_to_upstream: true
+    #   receive_from_downstream: false
+
+  - name: survival.example.com
+    address: "127.0.0.1:25579"
