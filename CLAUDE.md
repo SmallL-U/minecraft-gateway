@@ -14,102 +14,71 @@ The application follows a standard Go project layout:
 - **internal/gateway/**: Core proxy logic with connection handling and data forwarding
 - **internal/config/**: Configuration management with YAML loading, validation, and whitelist parsing
 - **internal/protocol/**: Minecraft and PROXY protocol parsers (supports v1 and v2)
-- **internal/logx/**: Structured logging wrapper around zap
-- **internal/proc/**: Cross-platform process management (Unix: PID file, Windows: Named Events)
+- **internal/logx/**: Structured logging wrapper around zap (global singleton initialized via `init()`, fixed at Info level)
+- **internal/proc/**: Cross-platform process management (Unix: PID file at `/tmp/minecraft-gateway.pid`, Windows: Named Events)
+- **internal/auth/**: Placeholder directory, currently empty
 
-### Key Components
+### Key Design Details
 
-- **Gateway**: Main proxy server that listens for connections, parses Minecraft handshakes, selects backends based on server address, and forwards traffic
-- **Config**: Hot-reloadable configuration supporting server list with per-server whitelist and proxy protocol overrides
-- **Protocol Parsers**: Handle Minecraft handshake parsing and HAProxy PROXY protocol headers (v1/v2 input, v1 output)
+- **ParseHandshake** returns both the parsed `HandshakePacket` struct and the raw bytes of the original packet. The raw bytes are re-forwarded to the backend verbatim after optional PROXY protocol header injection.
+- **Whitelist precedence**: A per-server whitelist entirely *replaces* the global whitelist (it does not extend it). `GetWhitelist()` returns server-specific or falls back to global.
+- **Global whitelist check occurs before handshake parsing**; server-specific whitelist check occurs after parsing.
+- **Config hot-reload** (`SIGHUP`) swaps the config pointer under `configMutex` — already-connected sessions continue unaffected; only new connections use the new config.
 
 ### Concurrency Architecture
-
-The gateway uses a multi-goroutine architecture with proper synchronization:
 
 - **Main Thread**: Handles signal processing (SIGINT/SIGTERM/SIGHUP) and configuration reloading
 - **Accept Loop**: Single goroutine accepting incoming connections in `gateway.Start()`
 - **Connection Handlers**: One goroutine per client connection in `handleConnection()`
-- **Data Forwarding**: Two goroutines per connection (bidirectional data transfer)
-- **Thread Safety**: RWMutex protects config during hot reloads
+- **Data Forwarding**: Two goroutines per connection (bidirectional data transfer via `io.Copy`)
+- **Thread Safety**: `sync.RWMutex` protects config during hot reloads
 
 ### Connection Flow
 
 1. Client connects → global whitelist check
-2. Handshake parsing → server-specific whitelist check
-3. Backend selection based on server address from handshake
-4. Backend connection establishment
-5. Optional PROXY protocol header injection (per-server configurable)
-6. Bidirectional data forwarding with proper connection cleanup
+2. Optional PROXY protocol v1/v2 parsing (if `receive_from_downstream` is enabled globally)
+3. Minecraft handshake parsing → server-specific whitelist check
+4. Backend selection based on `ServerAddress` from handshake (falls back to `default` if no match)
+5. Backend connection establishment
+6. Optional PROXY protocol v1 header injection (per-server configurable via `send_to_upstream`)
+7. Original handshake bytes re-sent to backend, then bidirectional forwarding begins
 
 ## Development Commands
 
-### Building
 ```bash
-make build
+make build    # Build to bin/minecraft-gateway
+make run      # Build and run
+make reload   # Send reload signal to running instance (requires built binary)
+make stop     # Send stop signal to running instance (requires built binary)
+make clean    # Remove bin/ directory
+make help     # Show all targets
 ```
 
-### Running
-```bash
-make run
-```
-
-### Docker
-```bash
-# Build image
-docker build -t minecraft-gateway .
-
-# Run container
-docker run -p 25565:25565 minecraft-gateway
-```
-
-### Configuration Files
-
-- **config.yml**: Main configuration with listen address, server list, global/per-server whitelist and PROXY protocol settings
-- **minecraft-gateway.pid**: PID file for single instance enforcement
-
-### Hot Reload
-
-Reload configuration without restart:
-```bash
-make reload
-# or
-./bin/minecraft-gateway reload
-```
-
-### Stop Server
-
-Stop the running instance gracefully:
-```bash
-make stop
-# or
-./bin/minecraft-gateway stop
-```
+There are currently no tests in this codebase.
 
 ## Configuration
 
-The configuration supports global settings with per-server overrides:
+Config is loaded from `config.yml` in the working directory. Validation requires `listen_addr`, `default`, and at least one server with non-empty `name` and `address`.
+
+Whitelist entries accept both CIDR notation (`192.168.1.0/24`) and plain IPs (auto-converted to `/32` or `/128`).
 
 ```yaml
 timeout: 5s
 listen_addr: ":25565"
 default: "127.0.0.1:25577"
 
-# Global whitelist
 whitelist:
   - 0.0.0.0/0
   - "::/0"
 
-# Global proxy protocol
 proxy_protocol:
   send_to_upstream: false
   receive_from_downstream: false
 
-# Server list
 servers:
   - name: lobby.example.com
     address: "127.0.0.1:25578"
-    # Optional per-server overrides
+    # Per-server overrides (each replaces, not extends, the global setting)
     whitelist:
       - 192.168.1.0/24
     proxy_protocol:
@@ -118,18 +87,11 @@ servers:
 
 ## Protocol Support
 
-- **Minecraft Protocol**: Parses handshake packets to extract server address for routing
-- **HAProxy PROXY Protocol v1/v2**: Receives both v1 and v2 from downstream, sends v1 to upstream
-- **IPv4/IPv6**: Full support for both IP versions
+- **Minecraft Protocol**: Parses handshake packets (packet ID 0x00) to extract `ServerAddress` for routing; VarInt address length capped at 65535 bytes
+- **HAProxy PROXY Protocol v1/v2**: Receives both v1 and v2 from downstream (via `go-proxyproto` library), sends only v1 to upstream
+- **IPv4/IPv6**: Full support in both whitelist matching and PROXY protocol headers
 
-## Security Considerations
+## Signal Handling (Unix)
 
-- **VarInt Validation**: Address length limited to 65535 bytes to prevent memory exhaustion attacks
-- **Type Safety**: Safe type assertions with proper error handling to prevent panics
-- **Resource Management**: Proper connection cleanup and goroutine lifecycle management
-- **Whitelist Enforcement**: CIDR-based IP filtering at global and per-server levels
-
-## Signal Handling
-
-- **SIGINT/SIGTERM**: Graceful shutdown
+- **SIGINT/SIGTERM**: Graceful shutdown (closes listener, waits for in-flight connections)
 - **SIGHUP**: Hot reload configuration
