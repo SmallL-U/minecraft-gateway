@@ -106,27 +106,10 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 		logger.Debugf("Received proxy protocol header from %s", clientAddr)
 	}
 
-	// Detect legacy ping (0xFE) — not a standard handshake, cannot be routed
-	firstByte, err := reader.Peek(1)
-	if err != nil {
-		logger.Debugf("Failed to peek first byte from %s: %s", clientAddr, err)
-		return
-	}
-	if firstByte[0] == 0xFE {
-		logger.Debugf("Legacy ping from %s, ignoring", clientAddr)
-		return
-	}
-
 	// Parse handshake
 	handshake, data, err := protocol.ParseHandshake(reader)
 	if err != nil {
-		// Dump buffered bytes for debugging
-		if n := reader.Buffered(); n > 0 {
-			peeked, _ := reader.Peek(n)
-			logger.Errorf("Failed to parse handshake from %s: %s (buffered %d bytes: %x)", clientAddr, err, n, peeked)
-		} else {
-			logger.Errorf("Failed to parse handshake from %s: %s (no buffered data)", clientAddr, err)
-		}
+		logger.Errorf("Failed to parse handshake from %s: %s", clientAddr, err)
 		return
 	}
 	logger.Debugf("Received handshake from %s: %+v", clientAddr, handshake)
