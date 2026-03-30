@@ -44,6 +44,9 @@ func runServer() {
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
 	}
+	if err := logx.SetLevel(conf.LogLevel); err != nil {
+		logger.Fatalf("Failed to apply log level %q: %v", conf.LogLevel, err)
+	}
 	logger.Infof("Loaded config with %d servers", len(conf.Servers))
 
 	// New instance of gateway

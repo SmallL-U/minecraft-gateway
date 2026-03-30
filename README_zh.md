@@ -52,6 +52,7 @@ docker run -p 25565:25565 -v ./config.yml:/srv/config.yml minecraft-gateway
 timeout: 5s
 listen_addr: ":25565"
 default: "127.0.0.1:25577"
+log_level: info
 
 # 全局白名单（默认允许所有）
 whitelist:
@@ -84,6 +85,7 @@ servers:
 | `timeout` | 连接超时时间（如 `5s`、`10s`） |
 | `listen_addr` | 监听地址（如 `:25565`） |
 | `default` | 默认后端服务器地址 |
+| `log_level` | 日志级别：`debug`、`info`、`warn`、`error`，默认 `info` |
 | `whitelist` | 全局 IP 白名单（CIDR 格式） |
 | `proxy_protocol.send_to_upstream` | 向后端发送 PROXY 协议头 |
 | `proxy_protocol.receive_from_downstream` | 期望从客户端接收 PROXY 协议 |

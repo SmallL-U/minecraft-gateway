@@ -52,6 +52,7 @@ Create a `config.yml` file:
 timeout: 5s
 listen_addr: ":25565"
 default: "127.0.0.1:25577"
+log_level: info
 
 # Global whitelist (allow all by default)
 whitelist:
@@ -84,6 +85,7 @@ servers:
 | `timeout` | Connection timeout (e.g., `5s`, `10s`) |
 | `listen_addr` | Address to listen on (e.g., `:25565`) |
 | `default` | Default backend server address |
+| `log_level` | Log level: `debug`, `info`, `warn`, `error` (defaults to `info`) |
 | `whitelist` | Global IP whitelist (CIDR notation) |
 | `proxy_protocol.send_to_upstream` | Send PROXY protocol header to backend |
 | `proxy_protocol.receive_from_downstream` | Expect PROXY protocol from client |

@@ -14,7 +14,7 @@ The application follows a standard Go project layout:
 - **internal/gateway/**: Core proxy logic with connection handling and data forwarding
 - **internal/config/**: Configuration management with YAML loading, validation, and whitelist parsing
 - **internal/protocol/**: Minecraft and PROXY protocol parsers (supports v1 and v2)
-- **internal/logx/**: Structured logging wrapper around zap (global singleton initialized via `init()`, fixed at Info level)
+- **internal/logx/**: Structured logging wrapper around zap (global singleton initialized via `init()`, level controlled by `log_level`)
 - **internal/proc/**: Cross-platform process management (Unix: PID file at `/tmp/minecraft-gateway.pid`, Windows: Named Events)
 - **internal/auth/**: Placeholder directory, currently empty
 

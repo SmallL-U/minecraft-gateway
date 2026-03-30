@@ -32,6 +32,10 @@ func signalHandler(doneChan chan struct{}) {
 				logger.Errorf("Failed to reload config: %v", err)
 				continue
 			}
+			if err := logx.SetLevel(newConf.LogLevel); err != nil {
+				logger.Errorf("Failed to apply log level %q: %v", newConf.LogLevel, err)
+				continue
+			}
 			gw.UpdateConfig(newConf)
 			logger.Infof("Configuration reloaded successfully with %d servers", len(newConf.Servers))
 		default:

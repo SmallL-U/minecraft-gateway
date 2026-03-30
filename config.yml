@@ -1,6 +1,7 @@
 timeout: 5s
 listen_addr: ":25565"
 default: "127.0.0.1:25577"
+log_level: info
 
 # Global whitelist (allow all by default)
 whitelist:

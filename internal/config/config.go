@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
 )
+
+const defaultLogLevel = "info"
 
 type ProxyProtocolConfig struct {
 	SendToUpstream        bool `yaml:"send_to_upstream"`
@@ -25,6 +28,7 @@ type Config struct {
 	Timeout       time.Duration       `yaml:"timeout"`
 	ListenAddr    string              `yaml:"listen_addr"`
 	Default       string              `yaml:"default"`
+	LogLevel      string              `yaml:"log_level"`
 	Whitelist     []string            `yaml:"whitelist"`
 	ProxyProtocol ProxyProtocolConfig `yaml:"proxy_protocol"`
 	Servers       []Server            `yaml:"servers"`
@@ -72,6 +76,17 @@ func (c *Config) parseWhitelists() {
 			c.serverWhitelists[server.Name] = parseWhitelist(server.Whitelist)
 		}
 	}
+}
+
+func applyDefaults(config *Config) {
+	config.LogLevel = strings.TrimSpace(strings.ToLower(config.LogLevel))
+	if config.LogLevel == "warning" {
+		config.LogLevel = "warn"
+	}
+	if config.LogLevel != "" {
+		return
+	}
+	config.LogLevel = defaultLogLevel
 }
 
 // GetWhitelist returns the whitelist for the given server name, or global whitelist if not specified.
@@ -147,7 +162,12 @@ func validateConfig(config *Config) error {
 	if config.Default == "" {
 		return fmt.Errorf("default backend address cannot be empty")
 	}
-	return nil
+	switch config.LogLevel {
+	case "debug", "info", "warn", "error":
+		return nil
+	default:
+		return fmt.Errorf("log_level must be one of debug, info, warn or error")
+	}
 }
 
 func LoadConfig(filename string) (*Config, error) {
@@ -160,6 +180,8 @@ func LoadConfig(filename string) (*Config, error) {
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("error decoding config from YAML: %v", err)
 	}
+
+	applyDefaults(config)
 
 	if err := validateConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid config: %v", err)
