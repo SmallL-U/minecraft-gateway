@@ -115,6 +115,9 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	logger.Debugf("Received handshake from %s: %+v", clientAddr, handshake)
 
 	serverName := handshake.ServerAddress
+	if idx := strings.IndexByte(serverName, '\x00'); idx != -1 {
+		serverName = serverName[:idx]
+	}
 
 	// Check server-specific whitelist
 	if clientTCP, ok := clientAddr.(*net.TCPAddr); ok {
