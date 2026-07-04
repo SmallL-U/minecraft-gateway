@@ -24,8 +24,11 @@ make build
 ### Run
 
 ```bash
-# Start the server
+# Start the server (loads config.yml from the working directory by default)
 ./bin/minecraft-gateway
+
+# Start with a custom config path
+./bin/minecraft-gateway -config /path/to/config.yml
 
 # Reload configuration
 ./bin/minecraft-gateway reload
@@ -82,7 +85,7 @@ servers:
 
 | Option | Description |
 |--------|-------------|
-| `timeout` | Connection timeout (e.g., `5s`, `10s`) |
+| `timeout` | Backend dial/write timeout (e.g., `5s`, `10s`; defaults to `5s`) |
 | `listen_addr` | Address to listen on (e.g., `:25565`) |
 | `default` | Default backend server address |
 | `log_level` | Log level: `debug`, `info`, `warn`, `error` (defaults to `info`) |

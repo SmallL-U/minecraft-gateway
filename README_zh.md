@@ -24,8 +24,11 @@ make build
 ### 运行
 
 ```bash
-# 启动服务器
+# 启动服务器（默认加载工作目录下的 config.yml）
 ./bin/minecraft-gateway
+
+# 指定配置文件路径启动
+./bin/minecraft-gateway -config /path/to/config.yml
 
 # 重新加载配置
 ./bin/minecraft-gateway reload
@@ -82,7 +85,7 @@ servers:
 
 | 选项 | 描述 |
 |------|------|
-| `timeout` | 连接超时时间（如 `5s`、`10s`） |
+| `timeout` | 后端连接/写入超时时间（如 `5s`、`10s`，默认 `5s`） |
 | `listen_addr` | 监听地址（如 `:25565`） |
 | `default` | 默认后端服务器地址 |
 | `log_level` | 日志级别：`debug`、`info`、`warn`、`error`，默认 `info` |

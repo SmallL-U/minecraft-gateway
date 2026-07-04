@@ -10,13 +10,12 @@ This is a Minecraft gateway/proxy server written in Go that routes connections b
 
 The application follows a standard Go project layout:
 
-- **cmd/minecraft-gateway/**: Entry point with configuration loading, signal handling, and graceful shutdown
+- **cmd/minecraft-gateway/**: Entry point with CLI flags (`-config`), subcommands (`reload`/`stop`/`help`), and platform-specific signal handling
 - **internal/gateway/**: Core proxy logic with connection handling and data forwarding
 - **internal/config/**: Configuration management with YAML loading, validation, and whitelist parsing
 - **internal/protocol/**: Minecraft and PROXY protocol parsers (supports v1 and v2)
 - **internal/logx/**: Structured logging wrapper around zap (global singleton initialized via `init()`, level controlled by `log_level`)
 - **internal/proc/**: Cross-platform process management (Unix: PID file at `/tmp/minecraft-gateway.pid`, Windows: Named Events)
-- **internal/auth/**: Placeholder directory, currently empty
 
 ### Key Design Details
 
@@ -24,11 +23,13 @@ The application follows a standard Go project layout:
 - **Whitelist precedence**: A per-server whitelist entirely *replaces* the global whitelist (it does not extend it). `GetWhitelist()` returns server-specific or falls back to global.
 - **Global whitelist check occurs before handshake parsing**; server-specific whitelist check occurs after parsing.
 - **Config hot-reload** (`SIGHUP`) swaps the config pointer under `configMutex` — already-connected sessions continue unaffected; only new connections use the new config.
+- **`timeout` defaults to 5s** when unset; it is used both as the dial timeout for backends and as the write deadline in `sendData`.
+- **Gateway startup is split into `Listen()` and `Serve()`**: `Listen()` binds synchronously so bind errors fail fast at startup; `Serve()` runs the accept loop until `Stop()` closes the listener.
 
 ### Concurrency Architecture
 
 - **Main Thread**: Handles signal processing (SIGINT/SIGTERM/SIGHUP) and configuration reloading
-- **Accept Loop**: Single goroutine accepting incoming connections in `gateway.Start()`
+- **Accept Loop**: Single goroutine accepting incoming connections in `gateway.Serve()`
 - **Connection Handlers**: One goroutine per client connection in `handleConnection()`
 - **Data Forwarding**: Two goroutines per connection (bidirectional data transfer via `io.Copy`)
 - **Thread Safety**: `sync.RWMutex` protects config during hot reloads
@@ -50,15 +51,19 @@ make build    # Build to bin/minecraft-gateway
 make run      # Build and run
 make reload   # Send reload signal to running instance (requires built binary)
 make stop     # Send stop signal to running instance (requires built binary)
+make test     # Run tests
+make vet      # Run go vet
+make fmt      # Format code (gofmt -w)
+make check    # Run vet + tests
 make clean    # Remove bin/ directory
 make help     # Show all targets
 ```
 
-There are currently no tests in this codebase.
+Unit tests cover `internal/config`, `internal/protocol`, and `internal/gateway` helpers. CI (GitHub Actions) runs gofmt check, vet, tests, and build on push/PR.
 
 ## Configuration
 
-Config is loaded from `config.yml` in the working directory. Validation requires `listen_addr`, `default`, and at least one server with non-empty `name` and `address`.
+Config path is set via the `-config` flag (default: `config.yml` in the working directory). Validation requires `listen_addr`, `default`, and at least one server with non-empty `name` and `address`.
 
 Whitelist entries accept both CIDR notation (`192.168.1.0/24`) and plain IPs (auto-converted to `/32` or `/128`).
 
@@ -93,5 +98,5 @@ servers:
 
 ## Signal Handling (Unix)
 
-- **SIGINT/SIGTERM**: Graceful shutdown (closes listener, waits for in-flight connections)
+- **SIGINT/SIGTERM**: Shutdown — closes the listener and exits; in-flight connections are dropped when the process exits (there is no connection draining)
 - **SIGHUP**: Hot reload configuration
