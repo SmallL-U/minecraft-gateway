@@ -10,7 +10,10 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-const defaultLogLevel = "info"
+const (
+	defaultLogLevel = "info"
+	defaultTimeout  = 5 * time.Second
+)
 
 type ProxyProtocolConfig struct {
 	SendToUpstream        bool `yaml:"send_to_upstream"`
@@ -79,14 +82,16 @@ func (c *Config) parseWhitelists() {
 }
 
 func applyDefaults(config *Config) {
+	if config.Timeout <= 0 {
+		config.Timeout = defaultTimeout
+	}
 	config.LogLevel = strings.TrimSpace(strings.ToLower(config.LogLevel))
 	if config.LogLevel == "warning" {
 		config.LogLevel = "warn"
 	}
-	if config.LogLevel != "" {
-		return
+	if config.LogLevel == "" {
+		config.LogLevel = defaultLogLevel
 	}
-	config.LogLevel = defaultLogLevel
 }
 
 // GetWhitelist returns the whitelist for the given server name, or global whitelist if not specified.

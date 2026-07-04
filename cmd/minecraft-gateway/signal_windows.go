@@ -3,21 +3,18 @@
 package main
 
 import (
-	"minecraft-gateway/internal/config"
-	"minecraft-gateway/internal/logx"
+	"minecraft-gateway/internal/gateway"
 	"minecraft-gateway/internal/proc"
 )
 
-func signalHandler(doneChan chan struct{}) {
+func signalHandler(gw *gateway.Gateway, configPath string, doneChan chan struct{}) {
 	for {
 		sig, err := proc.WaitForSignals()
 		if err != nil {
-			logger := logx.GetLogger()
 			logger.Errorf("Error waiting for signals: %v", err)
 			return
 		}
 
-		logger := logx.GetLogger()
 		switch sig {
 		case "stop":
 			logger.Info("Received stop signal, shutting down...")
@@ -28,17 +25,7 @@ func signalHandler(doneChan chan struct{}) {
 			return
 		case "reload":
 			logger.Info("Received reload signal, hot reloading...")
-			newConf, err := config.LoadConfig(configFile)
-			if err != nil {
-				logger.Errorf("Failed to reload config: %v", err)
-				continue
-			}
-			if err := logx.SetLevel(newConf.LogLevel); err != nil {
-				logger.Errorf("Failed to apply log level %q: %v", newConf.LogLevel, err)
-				continue
-			}
-			gw.UpdateConfig(newConf)
-			logger.Infof("Configuration reloaded successfully with %d servers", len(newConf.Servers))
+			reloadConfig(gw, configPath)
 		}
 	}
 }

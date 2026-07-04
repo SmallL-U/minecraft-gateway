@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"os"
 
 	"minecraft-gateway/internal/config"
@@ -9,9 +11,6 @@ import (
 	"minecraft-gateway/internal/proc"
 )
 
-const configFile = "config.yml"
-
-var gw *gateway.Gateway
 var logger = logx.GetLogger()
 
 func handleReload() {
@@ -28,58 +27,76 @@ func handleStop() {
 	logger.Info("Stop signal sent successfully")
 }
 
-func runServer() {
-	defer func() {
-		_ = logger.Sync()
-	}()
-
+func runServer(configPath string) error {
 	// Acquire process lock
 	if err := proc.Acquire(); err != nil {
-		logger.Fatalf("Failed to acquire process lock: %v", err)
+		return fmt.Errorf("failed to acquire process lock: %w", err)
 	}
 	defer proc.Release()
 
 	// Load config
-	conf, err := config.LoadConfig(configFile)
+	conf, err := config.LoadConfig(configPath)
 	if err != nil {
-		logger.Fatalf("Failed to load config: %v", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 	if err := logx.SetLevel(conf.LogLevel); err != nil {
-		logger.Fatalf("Failed to apply log level %q: %v", conf.LogLevel, err)
+		return fmt.Errorf("failed to apply log level %q: %w", conf.LogLevel, err)
 	}
 	logger.Infof("Loaded config with %d servers", len(conf.Servers))
 
-	// New instance of gateway
-	gw = gateway.NewGateway(conf)
-	logger.Info("Created new minecraft gateway")
+	// Start listening before spawning the accept loop so bind errors fail fast
+	gw := gateway.NewGateway(conf)
+	if err := gw.Listen(); err != nil {
+		return fmt.Errorf("failed to start gateway: %w", err)
+	}
 
 	errChan := make(chan error, 1)
 	doneChan := make(chan struct{})
 
-	// Start the gateway in a goroutine
 	go func() {
-		if err := gw.Start(); err != nil {
+		if err := gw.Serve(); err != nil {
 			errChan <- err
 		}
 	}()
-
-	// Start signal handler
-	go signalHandler(doneChan)
+	go signalHandler(gw, configPath, doneChan)
 
 	select {
 	case err := <-errChan:
-		logger.Fatalf("Failed to start gateway: %v", err)
+		return fmt.Errorf("gateway error: %w", err)
 	case <-doneChan:
 		logger.Info("Gateway shutdown gracefully.")
+		return nil
 	}
 }
 
+// reloadConfig hot-reloads the config for the running gateway. Called by the
+// platform-specific signal handlers.
+func reloadConfig(gw *gateway.Gateway, configPath string) {
+	newConf, err := config.LoadConfig(configPath)
+	if err != nil {
+		logger.Errorf("Failed to reload config: %v", err)
+		return
+	}
+	if err := logx.SetLevel(newConf.LogLevel); err != nil {
+		logger.Errorf("Failed to apply log level %q: %v", newConf.LogLevel, err)
+		return
+	}
+	gw.UpdateConfig(newConf)
+	logger.Infof("Configuration reloaded successfully with %d servers", len(newConf.Servers))
+}
+
 func printUsage() {
-	logger.Info("Usage: minecraft-gateway [command]")
-	logger.Info("Commands:")
-	logger.Info("  (none)    Start the gateway server")
-	logger.Info("  reload    Reload configuration (send SIGHUP to running instance)")
-	logger.Info("  stop      Stop the running instance (send SIGTERM)")
+	out := flag.CommandLine.Output()
+	_, _ = fmt.Fprintln(out, "Usage: minecraft-gateway [flags] [command]")
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Commands:")
+	_, _ = fmt.Fprintln(out, "  (none)    Start the gateway server")
+	_, _ = fmt.Fprintln(out, "  reload    Reload configuration of the running instance")
+	_, _ = fmt.Fprintln(out, "  stop      Stop the running instance")
+	_, _ = fmt.Fprintln(out, "  help      Show this help")
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Flags:")
+	flag.PrintDefaults()
 }
 
 func main() {
@@ -87,20 +104,23 @@ func main() {
 		_ = logger.Sync()
 	}()
 
-	if len(os.Args) < 2 {
-		runServer()
-		return
-	}
+	configPath := flag.String("config", "config.yml", "path to the configuration file")
+	flag.Usage = printUsage
+	flag.Parse()
 
-	switch os.Args[1] {
+	switch flag.Arg(0) {
+	case "":
+		if err := runServer(*configPath); err != nil {
+			logger.Fatalf("%v", err)
+		}
 	case "reload":
 		handleReload()
 	case "stop":
 		handleStop()
-	case "help", "-h", "--help":
+	case "help":
 		printUsage()
 	default:
-		logger.Errorf("Unknown command: %s", os.Args[1])
+		logger.Errorf("Unknown command: %s", flag.Arg(0))
 		printUsage()
 		os.Exit(1)
 	}

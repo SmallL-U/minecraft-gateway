@@ -7,16 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"minecraft-gateway/internal/config"
-	"minecraft-gateway/internal/logx"
+	"minecraft-gateway/internal/gateway"
 )
 
-func signalHandler(doneChan chan struct{}) {
+func signalHandler(gw *gateway.Gateway, configPath string, doneChan chan struct{}) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	for sig := range sigChan {
-		logger := logx.GetLogger()
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
 			logger.Info("Received termination signal, shutting down...")
@@ -27,17 +25,7 @@ func signalHandler(doneChan chan struct{}) {
 			return
 		case syscall.SIGHUP:
 			logger.Info("Received SIGHUP signal, hot reloading...")
-			newConf, err := config.LoadConfig(configFile)
-			if err != nil {
-				logger.Errorf("Failed to reload config: %v", err)
-				continue
-			}
-			if err := logx.SetLevel(newConf.LogLevel); err != nil {
-				logger.Errorf("Failed to apply log level %q: %v", newConf.LogLevel, err)
-				continue
-			}
-			gw.UpdateConfig(newConf)
-			logger.Infof("Configuration reloaded successfully with %d servers", len(newConf.Servers))
+			reloadConfig(gw, configPath)
 		default:
 			logger.Warnf("Received unknown signal: %v", sig)
 		}

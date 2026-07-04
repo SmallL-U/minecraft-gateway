@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -32,8 +33,8 @@ func (g *Gateway) UpdateConfig(conf *config.Config) {
 	g.config = conf
 }
 
-func sendData(dst net.Conn, data []byte) error {
-	err := dst.SetWriteDeadline(time.Now().Add(5 * time.Second))
+func sendData(dst net.Conn, data []byte, timeout time.Duration) error {
+	err := dst.SetWriteDeadline(time.Now().Add(timeout))
 	if err != nil {
 		return err
 	}
@@ -155,14 +156,14 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 			logger.Errorf("Failed to build proxy protocol header: %s", err)
 			return
 		}
-		if err := sendData(backendConn, headerBytes); err != nil {
+		if err := sendData(backendConn, headerBytes, conf.Timeout); err != nil {
 			logger.Errorf("Failed to send proxy protocol header to backend %s: %s", backendAddr, err)
 			return
 		}
 	}
 
 	// Resend handshake data to backend
-	if err := sendData(backendConn, data); err != nil {
+	if err := sendData(backendConn, data, conf.Timeout); err != nil {
 		logger.Errorf("Failed to send handshake data to backend %s: %s", backendAddr, err)
 		return
 	}
@@ -173,53 +174,51 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 	// Forward client to backend
 	go func() {
 		defer wg.Done()
-		if _, err := io.Copy(backendConn, reader); err != nil {
-			if isExpectedNetworkError(err) {
-				return
-			}
-			logger.Errorf("Error forwarding data from client %s to backend %s: %s", clientAddr, backendAddr, err)
-		}
-		if closer, ok := backendConn.(interface{ CloseWrite() error }); ok {
-			_ = closer.CloseWrite()
-		}
+		pipe(backendConn, reader, fmt.Sprintf("client %s to backend %s", clientAddr, backendAddr))
 	}()
 
 	// Forward backend to client
 	go func() {
 		defer wg.Done()
-		if _, err := io.Copy(clientConn, backendConn); err != nil {
-			if isExpectedNetworkError(err) {
-				return
-			}
-			logger.Errorf("Error forwarding data from backend %s to client %s: %s", backendAddr, clientAddr, err)
-		}
-		if closer, ok := clientConn.(interface{ CloseWrite() error }); ok {
-			_ = closer.CloseWrite()
-		}
+		pipe(clientConn, backendConn, fmt.Sprintf("backend %s to client %s", backendAddr, clientAddr))
 	}()
 
 	wg.Wait()
 	logger.Infof("Connection closed for %s", clientAddr)
 }
 
-func (g *Gateway) Start() error {
-	logger.Info("Starting gateway...")
+// pipe copies src to dst until EOF, then half-closes dst so the peer sees EOF.
+func pipe(dst net.Conn, src io.Reader, desc string) {
+	if _, err := io.Copy(dst, src); err != nil {
+		if isExpectedNetworkError(err) {
+			return
+		}
+		logger.Errorf("Error forwarding data from %s: %s", desc, err)
+	}
+	if closer, ok := dst.(interface{ CloseWrite() error }); ok {
+		_ = closer.CloseWrite()
+	}
+}
+
+// Listen opens the listening socket. It must be called before Serve.
+func (g *Gateway) Listen() error {
 	listener, err := net.Listen("tcp", g.config.ListenAddr)
 	if err != nil {
 		return err
 	}
 	g.listener = listener
 	logger.Infof("Gateway listening on %s", g.config.ListenAddr)
+	return nil
+}
 
+// Serve accepts connections until the listener is closed via Stop.
+func (g *Gateway) Serve() error {
 	for {
-		conn, err := listener.Accept()
+		conn, err := g.listener.Accept()
 		if err != nil {
-			var opErr *net.OpError
-			if errors.As(err, &opErr) && opErr.Op == "accept" {
-				if strings.Contains(err.Error(), "use of closed network connection") {
-					logger.Info("Listener closed, shutting down gracefully")
-					return nil
-				}
+			if errors.Is(err, net.ErrClosed) {
+				logger.Info("Listener closed, shutting down gracefully")
+				return nil
 			}
 			logger.Errorf("Failed to accept connection: %s", err)
 			continue
