@@ -11,17 +11,17 @@ import (
 )
 
 const (
-	eventPrefix    = "Global\\minecraft-gateway"
-	eventStop      = eventPrefix + "_stop"
-	eventReload    = eventPrefix + "_reload"
-	mutexName      = eventPrefix + "_mutex"
+	eventPrefix = "Global\\minecraft-gateway"
+	eventStop   = eventPrefix + "_stop"
+	eventReload = eventPrefix + "_reload"
+	mutexName   = eventPrefix + "_mutex"
 )
 
 var (
-	mutex        windows.Handle
-	stopEvent    windows.Handle
-	reloadEvent  windows.Handle
-	eventsMu     sync.Mutex
+	mutex       windows.Handle
+	stopEvent   windows.Handle
+	reloadEvent windows.Handle
+	eventsMu    sync.Mutex
 )
 
 // Acquire tries to acquire the process lock using a named mutex.
@@ -41,7 +41,7 @@ func Acquire() error {
 		return fmt.Errorf("failed to acquire mutex: %v", err)
 	}
 
-	if event == windows.WAIT_TIMEOUT {
+	if event == uint32(windows.WAIT_TIMEOUT) {
 		windows.CloseHandle(mutex)
 		return fmt.Errorf("another instance is already running")
 	}
@@ -118,14 +118,15 @@ func WaitForSignals() (string, error) {
 func createEvents() error {
 	var err error
 
+	// CreateEvent takes uint32 flags: manualReset=1, initialState=0
 	stopName, _ := windows.UTF16PtrFromString(eventStop)
-	stopEvent, err = windows.CreateEvent(nil, true, false, stopName)
+	stopEvent, err = windows.CreateEvent(nil, 1, 0, stopName)
 	if err != nil {
 		return fmt.Errorf("failed to create stop event: %v", err)
 	}
 
 	reloadName, _ := windows.UTF16PtrFromString(eventReload)
-	reloadEvent, err = windows.CreateEvent(nil, true, false, reloadName)
+	reloadEvent, err = windows.CreateEvent(nil, 1, 0, reloadName)
 	if err != nil {
 		windows.CloseHandle(stopEvent)
 		return fmt.Errorf("failed to create reload event: %v", err)
