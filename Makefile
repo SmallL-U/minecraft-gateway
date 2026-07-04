@@ -1,4 +1,4 @@
-.PHONY: help build clean run reload stop
+.PHONY: help build clean run reload stop fmt vet test check
 
 APP_NAME := minecraft-gateway
 BIN_DIR := bin
@@ -22,3 +22,14 @@ reload: ## Reload configuration of running instance
 
 stop: ## Stop running instance
 	$(BIN) stop
+
+fmt: ## Format code
+	gofmt -w .
+
+vet: ## Run go vet
+	go vet ./...
+
+test: ## Run tests
+	go test ./...
+
+check: vet test ## Run vet and tests
