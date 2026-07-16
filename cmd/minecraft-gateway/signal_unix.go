@@ -10,19 +10,16 @@ import (
 	"minecraft-gateway/internal/gateway"
 )
 
-func signalHandler(gw *gateway.Gateway, configPath string, doneChan chan struct{}) {
+func signalHandler(gw *gateway.Gateway, configPath string) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigChan)
 
 	for sig := range sigChan {
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
 			logger.Info("Received termination signal, shutting down...")
-			if err := gw.Stop(); err != nil {
-				logger.Warnf("Failed to shut down gateway: %s", err)
-			}
-			close(doneChan)
-			return
+			return nil
 		case syscall.SIGHUP:
 			logger.Info("Received SIGHUP signal, hot reloading...")
 			reloadConfig(gw, configPath)
@@ -30,4 +27,5 @@ func signalHandler(gw *gateway.Gateway, configPath string, doneChan chan struct{
 			logger.Warnf("Received unknown signal: %v", sig)
 		}
 	}
+	return nil
 }

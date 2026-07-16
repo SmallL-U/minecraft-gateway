@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,17 +21,43 @@ var logger = logx.GetLogger()
 type Gateway struct {
 	config      *config.Config
 	configMutex sync.RWMutex
-	listener    net.Listener
+
+	listener        net.Listener
+	lifecycleMutex  sync.Mutex
+	stopping        bool
+	forcing         bool
+	connections     map[net.Conn]struct{}
+	connectionGroup sync.WaitGroup
+	dialContext     context.Context
+	cancelDials     context.CancelFunc
 }
 
 func NewGateway(conf *config.Config) *Gateway {
-	return &Gateway{config: conf}
+	dialContext, cancelDials := context.WithCancel(context.Background())
+	return &Gateway{
+		config:      conf,
+		connections: make(map[net.Conn]struct{}),
+		dialContext: dialContext,
+		cancelDials: cancelDials,
+	}
 }
 
-func (g *Gateway) UpdateConfig(conf *config.Config) {
+func (g *Gateway) UpdateConfig(conf *config.Config) error {
+	if conf == nil {
+		return errors.New("config cannot be nil")
+	}
+
 	g.configMutex.Lock()
 	defer g.configMutex.Unlock()
+	if g.config != nil && conf.ListenAddr != g.config.ListenAddr {
+		return fmt.Errorf(
+			"listen_addr cannot be changed during reload: %q to %q",
+			g.config.ListenAddr,
+			conf.ListenAddr,
+		)
+	}
 	g.config = conf
+	return nil
 }
 
 func sendData(dst net.Conn, data []byte, timeout time.Duration) error {
@@ -73,9 +100,44 @@ func isExpectedNetworkError(err error) bool {
 	return false
 }
 
+func (g *Gateway) beginConnection(conn net.Conn) bool {
+	g.lifecycleMutex.Lock()
+	defer g.lifecycleMutex.Unlock()
+	if g.stopping {
+		return false
+	}
+
+	g.connections[conn] = struct{}{}
+	g.connectionGroup.Add(1)
+	return true
+}
+
+func (g *Gateway) trackConnection(conn net.Conn) bool {
+	g.lifecycleMutex.Lock()
+	defer g.lifecycleMutex.Unlock()
+	if g.forcing {
+		return false
+	}
+
+	g.connections[conn] = struct{}{}
+	return true
+}
+
+func (g *Gateway) untrackConnection(conn net.Conn) {
+	g.lifecycleMutex.Lock()
+	delete(g.connections, conn)
+	g.lifecycleMutex.Unlock()
+}
+
+func (g *Gateway) endConnection(conn net.Conn) {
+	g.untrackConnection(conn)
+	g.connectionGroup.Done()
+}
+
 func (g *Gateway) handleConnection(clientConn net.Conn) {
 	defer func() {
 		_ = clientConn.Close()
+		g.endConnection(clientConn)
 	}()
 
 	g.configMutex.RLock()
@@ -140,13 +202,19 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 
 	// Dial backend
 	logger.Infof("Routing connection from %s to backend %s", clientAddr, backendAddr)
-	backendConn, err := net.DialTimeout("tcp", backendAddr, conf.Timeout)
+	dialer := net.Dialer{Timeout: conf.Timeout}
+	backendConn, err := dialer.DialContext(g.dialContext, "tcp", backendAddr)
 	if err != nil {
 		logger.Errorf("Failed to connect to backend %s: %s", backendAddr, err)
 		return
 	}
+	if !g.trackConnection(backendConn) {
+		_ = backendConn.Close()
+		return
+	}
 	defer func() {
 		_ = backendConn.Close()
+		g.untrackConnection(backendConn)
 	}()
 
 	// Send proxy protocol header if enabled for this server
@@ -189,47 +257,133 @@ func (g *Gateway) handleConnection(clientConn net.Conn) {
 
 // pipe copies src to dst until EOF, then half-closes dst so the peer sees EOF.
 func pipe(dst net.Conn, src io.Reader, desc string) {
-	if _, err := io.Copy(dst, src); err != nil {
-		if isExpectedNetworkError(err) {
-			return
+	defer func() {
+		if closer, ok := dst.(interface{ CloseWrite() error }); ok {
+			_ = closer.CloseWrite()
 		}
-		logger.Errorf("Error forwarding data from %s: %s", desc, err)
+	}()
+
+	_, err := io.Copy(dst, src)
+	if err == nil || isExpectedNetworkError(err) {
+		return
 	}
-	if closer, ok := dst.(interface{ CloseWrite() error }); ok {
-		_ = closer.CloseWrite()
-	}
+	logger.Errorf("Error forwarding data from %s: %s", desc, err)
 }
 
 // Listen opens the listening socket. It must be called before Serve.
 func (g *Gateway) Listen() error {
-	listener, err := net.Listen("tcp", g.config.ListenAddr)
+	g.configMutex.RLock()
+	conf := g.config
+	g.configMutex.RUnlock()
+	if conf == nil {
+		return errors.New("config cannot be nil")
+	}
+
+	listener, err := net.Listen("tcp", conf.ListenAddr)
 	if err != nil {
 		return err
 	}
+
+	g.lifecycleMutex.Lock()
+	defer g.lifecycleMutex.Unlock()
+	if g.stopping {
+		_ = listener.Close()
+		return errors.New("gateway is stopping")
+	}
+	if g.listener != nil {
+		_ = listener.Close()
+		return errors.New("gateway is already listening")
+	}
 	g.listener = listener
-	logger.Infof("Gateway listening on %s", g.config.ListenAddr)
+	logger.Infof("Gateway listening on %s", conf.ListenAddr)
 	return nil
 }
 
 // Serve accepts connections until the listener is closed via Stop.
 func (g *Gateway) Serve() error {
+	g.lifecycleMutex.Lock()
+	listener := g.listener
+	g.lifecycleMutex.Unlock()
+	if listener == nil {
+		return errors.New("gateway listener is not initialized")
+	}
+
 	for {
-		conn, err := g.listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				logger.Info("Listener closed, shutting down gracefully")
+				logger.Info("Listener closed")
 				return nil
 			}
-			logger.Errorf("Failed to accept connection: %s", err)
-			continue
+			return fmt.Errorf("accept connection: %w", err)
 		}
-		go g.handleConnection(conn)
+
+		if !g.beginConnection(conn) {
+			_ = conn.Close()
+			return nil
+		}
+		go func(conn net.Conn) {
+			g.handleConnection(conn)
+		}(conn)
 	}
 }
 
+// Wait waits for all accepted connections to finish. Serve must return before
+// Wait is called so no new connections can be added to the wait group.
+func (g *Gateway) Wait() {
+	g.connectionGroup.Wait()
+}
+
 func (g *Gateway) Stop() error {
-	if g.listener != nil {
-		return g.listener.Close()
+	g.lifecycleMutex.Lock()
+	g.stopping = true
+	listener := g.listener
+	g.lifecycleMutex.Unlock()
+	if listener == nil {
+		return nil
 	}
-	return nil
+
+	err := listener.Close()
+	if errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
+}
+
+func (g *Gateway) forceCloseConnections() {
+	g.lifecycleMutex.Lock()
+	g.forcing = true
+	connections := make([]net.Conn, 0, len(g.connections))
+	for conn := range g.connections {
+		connections = append(connections, conn)
+	}
+	g.lifecycleMutex.Unlock()
+
+	g.cancelDials()
+	for _, conn := range connections {
+		_ = conn.Close()
+	}
+}
+
+// Shutdown stops accepting new connections, waits for active connections to
+// finish, and force-closes them if the context expires.
+func (g *Gateway) Shutdown(ctx context.Context) error {
+	listenerErr := g.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		g.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		g.cancelDials()
+		return listenerErr
+	case <-ctx.Done():
+		logger.Warnf("Graceful shutdown deadline reached: %v; closing active connections", ctx.Err())
+		g.forceCloseConnections()
+		<-done
+		return listenerErr
+	}
 }

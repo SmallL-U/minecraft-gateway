@@ -18,6 +18,8 @@ func TestVarIntRoundTrip(t *testing.T) {
 		{"128 (two byte boundary)", 128},
 		{"300", 300},
 		{"large value", 2147483647},
+		{"negative one", -1},
+		{"minimum value", -2147483648},
 	}
 
 	for _, tt := range tests {
@@ -31,6 +33,18 @@ func TestVarIntRoundTrip(t *testing.T) {
 				t.Errorf("readVarInt(encodeVarInt(%d)) = %d, want %d", tt.value, got, tt.value)
 			}
 		})
+	}
+}
+
+func TestParseHandshake_NegativePacketLength(t *testing.T) {
+	reader := bufio.NewReader(bytes.NewReader([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0x0F}))
+
+	_, _, err := ParseHandshake(reader)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got, want := err.Error(), "invalid packet length: -1 (must be non-negative)"; got != want {
+		t.Fatalf("ParseHandshake() error = %q, want %q", got, want)
 	}
 }
 

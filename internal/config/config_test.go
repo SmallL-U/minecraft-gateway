@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,6 +78,9 @@ func TestLoadConfig_FileNotExist(t *testing.T) {
 	_, err := LoadConfig(filepath.Join(t.TempDir(), "does-not-exist.yml"))
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("error = %v, want errors.Is(err, os.ErrNotExist) to be true", err)
 	}
 }
 
@@ -159,6 +164,27 @@ servers:
 				t.Fatalf("expected error, got nil")
 			}
 		})
+	}
+}
+
+func TestLoadConfig_DuplicateServerName(t *testing.T) {
+	yaml := `
+listen_addr: ":25565"
+default: "127.0.0.1:25577"
+servers:
+  - name: lobby
+    address: "127.0.0.1:25578"
+  - name: lobby
+    address: "127.0.0.1:25579"
+`
+	path := writeConfigFile(t, yaml)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for duplicate server name, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate server name: lobby") {
+		t.Errorf("error = %q, want duplicate server name", err)
 	}
 }
 

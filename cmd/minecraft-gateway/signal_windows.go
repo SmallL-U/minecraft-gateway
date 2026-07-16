@@ -3,26 +3,23 @@
 package main
 
 import (
+	"fmt"
+
 	"minecraft-gateway/internal/gateway"
 	"minecraft-gateway/internal/proc"
 )
 
-func signalHandler(gw *gateway.Gateway, configPath string, doneChan chan struct{}) {
+func signalHandler(gw *gateway.Gateway, configPath string) error {
 	for {
 		sig, err := proc.WaitForSignals()
 		if err != nil {
-			logger.Errorf("Error waiting for signals: %v", err)
-			return
+			return fmt.Errorf("failed to wait for signals: %w", err)
 		}
 
 		switch sig {
 		case "stop":
 			logger.Info("Received stop signal, shutting down...")
-			if err := gw.Stop(); err != nil {
-				logger.Warnf("Failed to shut down gateway: %s", err)
-			}
-			close(doneChan)
-			return
+			return nil
 		case "reload":
 			logger.Info("Received reload signal, hot reloading...")
 			reloadConfig(gw, configPath)

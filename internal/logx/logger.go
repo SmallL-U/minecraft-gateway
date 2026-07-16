@@ -41,7 +41,7 @@ func newConsoleLogger(level zap.AtomicLevel) *zap.SugaredLogger {
 		level,
 	)
 
-	return zap.New(core).Sugar()
+	return zap.New(core, zap.AddCaller()).Sugar()
 }
 
 func SetLevel(level string) error {

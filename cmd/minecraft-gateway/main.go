@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"minecraft-gateway/internal/config"
 	"minecraft-gateway/internal/gateway"
@@ -13,18 +15,22 @@ import (
 
 var logger = logx.GetLogger()
 
-func handleReload() {
+const shutdownTimeout = 5 * time.Second
+
+func handleReload() error {
 	if err := proc.SendReload(); err != nil {
-		logger.Fatalf("Failed to send reload signal: %v", err)
+		return fmt.Errorf("failed to send reload signal: %w", err)
 	}
 	logger.Info("Reload signal sent successfully")
+	return nil
 }
 
-func handleStop() {
+func handleStop() error {
 	if err := proc.SendStop(); err != nil {
-		logger.Fatalf("Failed to send stop signal: %v", err)
+		return fmt.Errorf("failed to send stop signal: %w", err)
 	}
 	logger.Info("Stop signal sent successfully")
+	return nil
 }
 
 func runServer(configPath string) error {
@@ -50,23 +56,43 @@ func runServer(configPath string) error {
 		return fmt.Errorf("failed to start gateway: %w", err)
 	}
 
-	errChan := make(chan error, 1)
-	doneChan := make(chan struct{})
+	serveChan := make(chan error, 1)
+	signalChan := make(chan error, 1)
 
 	go func() {
-		if err := gw.Serve(); err != nil {
-			errChan <- err
-		}
+		serveChan <- gw.Serve()
 	}()
-	go signalHandler(gw, configPath, doneChan)
+	go func() {
+		signalChan <- signalHandler(gw, configPath)
+	}()
 
+	var serveErr error
+	serveFinished := false
+	var signalErr error
 	select {
-	case err := <-errChan:
-		return fmt.Errorf("gateway error: %w", err)
-	case <-doneChan:
-		logger.Info("Gateway shutdown gracefully.")
-		return nil
+	case serveErr = <-serveChan:
+		serveFinished = true
+	case signalErr = <-signalChan:
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	shutdownErr := gw.Shutdown(ctx)
+	if !serveFinished {
+		serveErr = <-serveChan
+	}
+
+	if signalErr != nil {
+		return fmt.Errorf("signal handler error: %w", signalErr)
+	}
+	if shutdownErr != nil {
+		return fmt.Errorf("gateway shutdown error: %w", shutdownErr)
+	}
+	if serveErr != nil {
+		return fmt.Errorf("gateway error: %w", serveErr)
+	}
+	logger.Info("Gateway shutdown complete")
+	return nil
 }
 
 // reloadConfig hot-reloads the config for the running gateway. Called by the
@@ -77,11 +103,14 @@ func reloadConfig(gw *gateway.Gateway, configPath string) {
 		logger.Errorf("Failed to reload config: %v", err)
 		return
 	}
+	if err := gw.UpdateConfig(newConf); err != nil {
+		logger.Errorf("Failed to apply reloaded config: %v", err)
+		return
+	}
 	if err := logx.SetLevel(newConf.LogLevel); err != nil {
 		logger.Errorf("Failed to apply log level %q: %v", newConf.LogLevel, err)
 		return
 	}
-	gw.UpdateConfig(newConf)
 	logger.Infof("Configuration reloaded successfully with %d servers", len(newConf.Servers))
 }
 
@@ -108,20 +137,25 @@ func main() {
 	flag.Usage = printUsage
 	flag.Parse()
 
+	var err error
 	switch flag.Arg(0) {
 	case "":
-		if err := runServer(*configPath); err != nil {
-			logger.Fatalf("%v", err)
-		}
+		err = runServer(*configPath)
 	case "reload":
-		handleReload()
+		err = handleReload()
 	case "stop":
-		handleStop()
+		err = handleStop()
 	case "help":
 		printUsage()
 	default:
-		logger.Errorf("Unknown command: %s", flag.Arg(0))
 		printUsage()
-		os.Exit(1)
+		err = fmt.Errorf("unknown command: %s", flag.Arg(0))
 	}
+
+	if err == nil {
+		return
+	}
+	logger.Errorf("%v", err)
+	_ = logger.Sync()
+	os.Exit(1)
 }

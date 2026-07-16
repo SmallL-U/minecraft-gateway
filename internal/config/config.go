@@ -156,10 +156,15 @@ func validateConfig(config *Config) error {
 	if len(config.Servers) == 0 {
 		return fmt.Errorf("at least one server must be defined")
 	}
+	seenNames := make(map[string]struct{}, len(config.Servers))
 	for _, server := range config.Servers {
 		if server.Name == "" {
 			return fmt.Errorf("server name cannot be empty")
 		}
+		if _, ok := seenNames[server.Name]; ok {
+			return fmt.Errorf("duplicate server name: %s", server.Name)
+		}
+		seenNames[server.Name] = struct{}{}
 		if server.Address == "" {
 			return fmt.Errorf("server address cannot be empty for server: %s", server.Name)
 		}
@@ -178,18 +183,18 @@ func validateConfig(config *Config) error {
 func LoadConfig(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("error reading config file: %v", err)
+		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
 	config := &Config{}
 	if err := yaml.Unmarshal(data, config); err != nil {
-		return nil, fmt.Errorf("error decoding config from YAML: %v", err)
+		return nil, fmt.Errorf("error decoding config from YAML: %w", err)
 	}
 
 	applyDefaults(config)
 
 	if err := validateConfig(config); err != nil {
-		return nil, fmt.Errorf("invalid config: %v", err)
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	config.parseWhitelists()
