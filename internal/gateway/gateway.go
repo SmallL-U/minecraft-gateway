@@ -315,7 +315,8 @@ func (g *Gateway) Serve() error {
 				logger.Info("Listener closed")
 				return nil
 			}
-			return fmt.Errorf("accept connection: %w", err)
+			logger.Errorf("Failed to accept connection: %s", err)
+			continue
 		}
 
 		if !g.beginConnection(conn) {

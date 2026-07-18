@@ -36,12 +36,21 @@ func (c *closeWriteTrackingConn) CloseWrite() error {
 }
 
 type acceptErrorListener struct {
-	err error
+	errors      []error
+	acceptCalls int
 }
 
-func (l *acceptErrorListener) Accept() (net.Conn, error) { return nil, l.err }
-func (l *acceptErrorListener) Close() error              { return nil }
-func (l *acceptErrorListener) Addr() net.Addr            { return nil }
+func (l *acceptErrorListener) Accept() (net.Conn, error) {
+	if l.acceptCalls >= len(l.errors) {
+		return nil, net.ErrClosed
+	}
+
+	err := l.errors[l.acceptCalls]
+	l.acceptCalls++
+	return nil, err
+}
+func (l *acceptErrorListener) Close() error   { return nil }
+func (l *acceptErrorListener) Addr() net.Addr { return nil }
 
 func TestIsExpectedNetworkError(t *testing.T) {
 	tests := []struct {
@@ -175,17 +184,17 @@ func TestGatewayServeRequiresListener(t *testing.T) {
 	}
 }
 
-func TestGatewayServeReturnsAcceptError(t *testing.T) {
+func TestGatewayServeContinuesAfterAcceptError(t *testing.T) {
 	acceptErr := errors.New("accept failed")
+	listener := &acceptErrorListener{errors: []error{acceptErr, net.ErrClosed}}
 	gateway := NewGateway(&config.Config{})
-	gateway.listener = &acceptErrorListener{err: acceptErr}
+	gateway.listener = listener
 
-	err := gateway.Serve()
-	if !errors.Is(err, acceptErr) {
-		t.Fatalf("Serve() error = %v, want wrapped %v", err, acceptErr)
+	if err := gateway.Serve(); err != nil {
+		t.Fatalf("Serve() error = %v, want nil", err)
 	}
-	if !strings.Contains(err.Error(), "accept connection") {
-		t.Fatalf("Serve() error = %q, want accept context", err)
+	if listener.acceptCalls != 2 {
+		t.Fatalf("Accept() calls = %d, want 2", listener.acceptCalls)
 	}
 }
 
